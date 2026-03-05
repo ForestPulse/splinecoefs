@@ -2,102 +2,77 @@
 
 
 void usage(char *exe, int exit_code){
-
-
-  printf("Usage: %s [-h] [-o] [-p] [-f] [-v] [-s] [-r] [-n] [-d] [-j] input-image input-bands\n", exe);
+  printf("Usage: %s -j cpus -i input-table -x mask-image -o output-image\n", exe);
+  printf("          -k order -c control-points -l lambda -y target-year\n");
+  printf("          -r = RED-band -n = NIR-band\n");
   printf("\n");
-  printf("  -h  = show this help\n");
+  printf("  -j = number of CPUs to use\n");
   printf("\n");
-  printf("  -o output-file  = output file path with extension,\n");
-  printf("     defaults to 'sharpened.tif'\n");
-  printf("  -p pca-file = output file path of PCA transformation,\n");
-  printf("     when not given, file is not written\n");
-  printf("  -f format  = output format (GDAL vector driver short name)\n");
-  printf("     defaults to GTiff\n");
-  printf("  -v variance = how much percent of the PCA-variance should be retained for the target bands?\n");
-  printf("     defaults to 99\n");
-  printf("  -s sampling = sampling factor to speed up computation of PCA\n");
-  printf("     defaults to 10\n");
-  printf("  -r radius = how many neighboring cells to use for sharpening?\n");
-  printf("     defaults to 2\n");
-  printf("  -n nbreaks = number of breaks for B-Spline\n");
-  printf("     defaults to 10\n");
-  printf("  -d order = order of the B-Spline\n");
-  printf("     defaults to 4\n");
-  printf("  -j ncpu = How many CPUs to use?\n");
-  printf("     defaults to all\n");
-  
+  printf("  -i = input-table = csv file with input images\n");
+  printf("  -x = mask image\n");
+  printf("  -o = output file (.tif)\n");
+  printf("\n");  
+  printf("  -k = order of the spline\n");
+  printf("  -c = number of control points (equiv. to number of output coefficients)\n");
+  printf("  -l = lambda (smoothing parameter)\n");
+  printf("  -y = target year\n");
+  printf("  -w = maximum weight for past data points\n");
+  printf("  -r = RED band number\n");
+  printf("  -n = NIR band number\n");
   printf("\n");
-  printf("  Positional arguments:\n");
-  printf("  - input-image: well, the input image...\n");
-  printf("  - input-bands: band definition\n");
-  printf("     csv table [en], three (or more) named columns\n");
-  printf("       band: band number\n");
-  printf("       wavelength: band's central wavelength\n");
-  printf("       use:  usage code\n");
-  printf("         1: target band (highres)\n");
-  printf("         2: spatial prediction band (lowres)\n");
-  printf("         0: spectral prediction band (anyres)\n");
-  printf("        -1: ignore, bad band\n");
-  printf("\n");
-
   exit(exit_code);
   return;
 }
 
-
 void parse_args(int argc, char *argv[], args_t *args){
-int opt;
-bool o = false, f = false, p = false;
-
-
+  int opt, received_n = 0, expected_n = 11;
   opterr = 0;
 
-  // default parameters
-  args->ncpu = omp_get_max_threads();
-  args->radius = 2;
-  args->minvar = 0.99;
-  args->sample = 10;
-  args->nbreak = 10;
-  args->order  = 4;
-  copy_string(args->f_output, STRLEN, "sharpened.tif");
-  copy_string(args->f_pca, STRLEN, "NULL");
-  copy_string(args->format, STRLEN, "GTiff");
-
-  // optional parameters
-  while ((opt = getopt(argc, argv, "ho:f:j:r:v:p:s:n:d:")) != -1){
+  while ((opt = getopt(argc, argv, "j:i:x:o:k:c:l:y:w:r:n:")) != -1){
     switch(opt){
-      case 'h':
-        usage(argv[0], SUCCESS);
-      case 'o':
-        copy_string(args->f_output, STRLEN, optarg);
-        o = true;
-        break;
-      case 'f':
-        copy_string(args->format, STRLEN, optarg);
-        f = true;
-        break;
       case 'j':
-        args->ncpu = atoi(optarg);
+        args->n_cpus = atoi(optarg);
+        received_n++;
+        break;
+      case 'i':
+        copy_string(args->path_input, STRLEN, optarg);
+        received_n++;
+        break;
+      case 'x':
+        copy_string(args->path_mask, STRLEN, optarg);
+        received_n++;
+        break;
+      case 'o':
+        copy_string(args->path_output, STRLEN, optarg);
+        received_n++;
+        break;
+      case 'k':
+        args->order = atoi(optarg);
+        received_n++;
+        break;
+      case 'c':
+        args->n_control_points = atoi(optarg);
+        received_n++;
+        break;
+      case 'l':
+        args->lambda = atof(optarg);
+        received_n++;
+        break;
+      case 'y':
+        args->target_year = atoi(optarg);
+        received_n++;
+        break;
+      case 'w':
+        args->max_weight = atof(optarg);
+        received_n++;
         break;
       case 'r':
-        args->radius = atoi(optarg);
-        break;
-      case 'v':
-        args->minvar = atof(optarg)/100.0;
-        break;
-      case 'p':
-        copy_string(args->f_pca, STRLEN, optarg);
-        p = true;
-        break;
-      case 's':
-        args->sample = atoi(optarg);
+        args->band_red = atoi(optarg) - 1;
+        received_n++;
         break;
       case 'n':
-        args->nbreak = atoi(optarg);
-        break;
-      case 'd':
-        args->order = atoi(optarg);
+        args->band_nir = atoi(optarg) - 1;
+        received_n++;
         break;
       case '?':
         if (isprint(optopt)){
@@ -112,32 +87,73 @@ bool o = false, f = false, p = false;
     }
   }
 
-  // non-optional parameters
-  args->n = 2;
-
-  if (optind < argc){
-    if (argc-optind == args->n){
-      copy_string(args->f_input, STRLEN, argv[optind++]);
-      copy_string(args->f_bands, STRLEN, argv[optind++]);
-    } else if (argc-optind < args->n){
-      fprintf(stderr, "some non-optional arguments are missing.\n");
-      usage(argv[0], FAILURE);
-    } else if (argc-optind > args->n){
-      fprintf(stderr, "too many non-optional arguments.\n");
-      usage(argv[0], FAILURE);
-    }
-  } else {
-    fprintf(stderr, "non-optional arguments are missing.\n");
+  if (received_n != expected_n){
+    fprintf(stderr, "Not all arguments received.\n");
     usage(argv[0], FAILURE);
   }
 
-  if ((!o && f) || (!f && o)){
-    fprintf(stderr, "If -f is given, -o needs to be given, too.\n"); 
+  if (!fileexist(args->path_input)){
+    fprintf(stderr, "Input file %s does not exist.\n", args->path_input);
+    usage(argv[0], FAILURE);
+  }
+  
+  if (!fileexist(args->path_mask)){
+    fprintf(stderr, "Mask file %s does not exist.\n", args->path_mask);
     usage(argv[0], FAILURE);
   }
 
-  if (p && !f){
-    fprintf(stderr, "If -p is given, -f needs to be given, too. Suggestion: -f GTiff\n"); 
+  if (fileexist(args->path_output)){
+    fprintf(stderr, "Output file %s already exists.\n", args->path_output);
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->n_cpus < 1){
+    fprintf(stderr, "Number of CPUs must be at least 1.\n");
+    usage(argv[0], FAILURE);
+  }
+  
+  if (args->order < 1){
+    fprintf(stderr, "order must be at least 1.\n");
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->n_control_points < 1){
+    fprintf(stderr, "number of control points must be at least 1.\n");
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->lambda < 0){
+    fprintf(stderr, "lambda must be non-negative.\n");
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->target_year < 1960){
+    fprintf(stderr, "target year must be >= 1960.\n");
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->target_year > 2099){
+    fprintf(stderr, "target year must be <= 2099.\n");
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->max_weight < 0){
+    fprintf(stderr, "maximum weight must be non-negative.\n");
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->max_weight > 1){
+    fprintf(stderr, "maximum weight must be <= 1.\n");
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->band_red < 0){
+    fprintf(stderr, "RED band number must be at least 1.\n");
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->band_nir < 0){
+    fprintf(stderr, "NIR band number must be at least 1.\n");
     usage(argv[0], FAILURE);
   }
 

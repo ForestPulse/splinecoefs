@@ -21,8 +21,8 @@ all: splinecoefs
 utils: src/utils.c
 	$(GCC) $(CFLAGS) -c src/utils.c -o utils.o
 
-#usage: src/usage.c
-#	$(GCC) $(CFLAGS) $(GDAL) -c src/usage.c -o usage.o $(LDGDAL)
+usage: src/usage.c
+	$(GCC) $(CFLAGS) -c src/usage.c -o usage.o
 
 alloc: src/alloc.c
 	$(GCC) $(CFLAGS) -c src/alloc.c -o alloc.o
@@ -45,15 +45,11 @@ table: src/table.c
 stats: src/stats.c
 	$(GCC) $(CFLAGS) $(GSL) $(GDAL) -c src/stats.c -o stats.o $(LDGSL) $(LDGDAL)
 
-#write: src/write.c
-#	$(G11) $(CFLAGS) $(GDAL) -c src/write.c -o write.o $(LDGDAL)
-
 string: src/string.c
 	$(GCC) $(CFLAGS) -c src/string.c -o string.o
 
-
-splinecoefs: utils alloc dir string date image_io quality table stats src/_splinecoefs.c
-	$(GCC) $(CFLAGS) $(GSL) $(GDAL) -o splinecoefs src/_splinecoefs.c utils.o alloc.o dir.o string.o date.o image_io.o quality.o table.o stats.o -lm $(LDGSL) $(LDGDAL)
+splinecoefs: utils alloc dir string date image_io quality table usage stats src/_splinecoefs.c
+	$(GCC) $(CFLAGS) $(GSL) $(GDAL) -o splinecoefs src/_splinecoefs.c utils.o alloc.o dir.o string.o date.o image_io.o quality.o table.o usage.o stats.o -lm $(LDGSL) $(LDGDAL)
 
 install:
 	cp splinecoefs $(BINDIR) ; chmod 755 $(BINDIR)/splinecoefs
