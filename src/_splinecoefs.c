@@ -47,25 +47,16 @@ enum { BOA, QAI, THT, N_PROD };
 
 int determine_annual_weights(int order, int n_control, double max_weight, int target_year, date_t **dates, int n_dates, int n_years, image_t **input, int band_nir, int band_red, image_t *mask, image_t *weight){
 
-  //image_t predicted_img[3];
-  //copy_image(mask, &predicted_img[0], 52, SHRT_MIN, "/home/ahsoka/frantz/temp/predicted_0.tif");
-  //copy_image(mask, &predicted_img[1], 52, SHRT_MIN, "/home/ahsoka/frantz/temp/predicted_1.tif");
-  //copy_image(mask, &predicted_img[2], 52, SHRT_MIN, "/home/ahsoka/frantz/temp/predicted_2.tif");
-
-  //image_t original_img[3];
-  //copy_image(mask, &original_img[0], 52, SHRT_MIN, "/home/ahsoka/frantz/temp/original_0.tif");
-  //copy_image(mask, &original_img[1], 52, SHRT_MIN, "/home/ahsoka/frantz/temp/original_1.tif");
-  //copy_image(mask, &original_img[2], 52, SHRT_MIN, "/home/ahsoka/frantz/temp/original_2.tif");
 
   #pragma omp parallel shared(order, n_control, max_weight, target_year, dates, n_dates, n_years, input, band_nir, band_red, mask, weight, stderr) default(none)
   {
 
     double min_x = 0.0;
     double max_x = 365.0;
+    int n_doys = 365;
     
     enum { START, END, RANGE };
 
-    int n_doys = 365;
 
     // workspace
     gsl_bspline_workspace *work;
@@ -93,9 +84,6 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
       w[year] = gsl_vector_alloc(vector_size);
     }
 
-    //int *valid_years = NULL;
-    //alloc((void**)&valid_years, n_years, sizeof(int));
-
     double **predicted = NULL;
     alloc_2D((void***)&predicted, n_years, n_doys, sizeof(double));
 
@@ -120,23 +108,6 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
       for (int d=0; d<n_dates; d++){
 
         if (!use_this_pixel(input[d][QAI].data[0][p])) continue;
-/**
-        if (d > 0 && dates[d][BOA].year == dates[d-1][BOA].year &&
-          (dates[d][BOA].doy - dates[d-1][BOA].doy) > (365/n_control)){
-          x->data[k] = x->data[k-1] + 365 / n_control / 2; // add a point at regular interval for gap
-          y->data[k] = y->data[k-1]; // repeat last value for gap
-          w->data[k] = w->data[k-1] * 0.1; // reduce weight for gap point
-          k++;
-        }
-
-        if (d > 0 && dates[d][BOA].year != dates[d-1][BOA].year &&
-          dates[d][BOA].doy > (365/n_control)){
-          x->data[k] = 365 / n_control / 2; // add a point at regular interval for gap
-          y->data[k] = 0.5; // repeat last value for gap
-          w->data[k] = w->data[k-1] * 0.01; // reduce weight for gap point
-          k++;
-        }
-**/
 
         int year = target_year - dates[d][BOA].year;
 
@@ -148,26 +119,9 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
         w[year]->data[n[year]] = sqrt(ndvi);
 
         n[year]++;
-/**
-        if (d != (n_dates-1) && dates[d][BOA].year != dates[d+1][BOA].year &&
-          (365 - dates[d][BOA].doy) > (365/n_control)){
-          x->data[k] = dates[d][BOA].doy + 365 / n_control / 2; // add a point at regular interval for gap
-          y->data[k] = y->data[k-1]; // repeat last value for gap
-          w->data[k] = w->data[k-1] * 0.1; // reduce weight for gap point
-          k++;
-        }
 
-        if (d == (n_dates-1) && 
-          (365 - dates[d][BOA].doy) > (365/n_control)){
-          x->data[k] = dates[d][BOA].doy + 365 / n_control / 2; // add a point at regular interval for gap
-          y->data[k] = y->data[k-1]; // repeat last value for gap
-          w->data[k] = w->data[k-1] * 0.1; // reduce weight for gap point
-          k++;
-        }
-**/
       }
 
-if (p == 3600000) printf("Pixel %d: year 0 has %d data points, year 1 has %d data points, year 2 has %d data points.\n", p, n[0], n[1], n[2]);
             
       for (int year=0; year<n_years; year++){
       
@@ -223,50 +177,13 @@ if (p == 3600000) printf("Pixel %d: year 0 has %d data points, year 1 has %d dat
         
         n[year] += added_points;
 
-        if (p == 4797133){
-          printf("Pixel %d, year %d: added %d points for gaps, total now %d.\n", p, year, added_points, n[year]);
-          for (int d=0; d<n[year]; d++){
-            printf("  Point %d: x = %f, y = %f, w = %f\n", d, x[year]->data[d], y[year]->data[d], w[year]->data[d]);
-          }
-        }
-
-        //gsl_vector_view x_sub;
-        //gsl_vector_view y_sub;
-        //gsl_vector_view w_sub;
-        
-        //printf("Year %d for pixel %d: using data points from index %d to %d.\n", target_year - year, p, year_indices[year][START], year_indices[year][END]);
-
-        //x_sub = gsl_vector_subvector(x, year_indices[year][START], year_indices[year][END] - year_indices[year][START] + 1);
-        //y_sub = gsl_vector_subvector(y, year_indices[year][START], year_indices[year][END] - year_indices[year][START] + 1);
-        //w_sub = gsl_vector_subvector(w, year_indices[year][START], year_indices[year][END] - year_indices[year][START] + 1);
-/**
-        int n[52] = {0};
-        for (int i=0; i<x_sub.vector.size; i++){
-          int week = (int)(x_sub.vector.data[i] / 7);
-          if (week >= 52) week = 51; // cap at week 51 to avoid out-of-bounds
-
-          if (p == 556) printf("Adding value %f to week %d for year %d, pixel %d.\n", y_sub.vector.data[i], week, target_year - year, p);
-          original_img[year].data[week][p] += y_sub.vector.data[i]*10000;
-          n[week]++;
-        }
-        for (int w=0; w<52; w++){
-          if (n[w] > 0){
-            original_img[year].data[w][p] /= n[w];
-          }
-        }
-**/
-
         double chisq, est;
         gsl_bspline_wlssolve(x[year], y[year], w[year], c, &chisq, work);
-        //gsl_bspline_wlssolve(&x_sub.vector, &y_sub.vector, &w_sub.vector, c, &chisq, work);
 
         mean[year] = 0.0;
         for (int doy=0; doy<n_doys; doy++){
           gsl_bspline_calc(doy, c, &est, work);
           predicted[year][doy] = est;
-          //if (doy % 7 == 3) { // only store every 30th day for debugging
-          //  predicted_img[year].data[(int)(doy/7)][p] = (short)(est * 10000); // scale to 0-10000 for storage as short
-          //}
           mean[year] += est;
         }
 
@@ -311,7 +228,7 @@ if (p == 3600000) printf("Pixel %d: year 0 has %d data points, year 1 has %d dat
 
         if (w < 0){
           weight->data[year][p] = 0;
-          //fprintf(stderr, "Negative weight for year %d for pixel %d, setting to 0, d_max = %f, dist = %f.\n", target_year - year, p, dist_max, dist);
+          //printf("Negative weight for year %d for pixel %d, setting to 0, d_max = %f, dist = %f.\n", target_year - year, p, dist_max, dist);
         } else {
           weight->data[year][p] = w * 10000; // scale weight to 0-10000 for storage as short
         }
@@ -336,15 +253,6 @@ if (p == 3600000) printf("Pixel %d: year 0 has %d data points, year 1 has %d dat
     free((void*)mean);
 
   } // end parallel region
-
-
-  //write_image(&predicted_img[0]);
-  //write_image(&predicted_img[1]);
-  //write_image(&predicted_img[2]);
-
-  //write_image(&original_img[0]);
-  //write_image(&original_img[1]);
-  //write_image(&original_img[2]);
 
   return SUCCESS;
 }
@@ -524,7 +432,6 @@ time(&TIME);
     double **P = NULL;
     alloc_2D((void***)&P, args.n_control_points, args.n_control_points, sizeof(double)); // penalty matrix
 
-    //printf("Computing penalty matrix P...\n");
     // Build penalty matrix P (integral of product of 2nd derivatives of basis functions)
     // Approximate by finite differences over a fine grid
     int n_grid = 365; // number of points in grid for numerical integration
@@ -614,10 +521,8 @@ time(&TIME);
 
       }
 
-      if (n_x < args.n_control_points) continue; // need at least 3 data points for fitting
+      if (n_x < args.n_control_points) continue; // need at least n_control_points data points for fitting
 
-
-      //printf("B-spline basis matrix A:\n");
       // Build B-spline basis matrix A
       for (int i=0; i<n_x; i++) {
         gsl_bspline_eval(x[i], tmpB, work);
@@ -626,7 +531,6 @@ time(&TIME);
         }
       }
 
-      //printf("Computing AtWA...\n");
       // Compute AtWA
       for (int i=0; i<args.n_control_points; i++) {
         for (int j=0; j<args.n_control_points; j++) {
@@ -640,7 +544,6 @@ time(&TIME);
       }
 
 
-      //printf("Solving linear system...\n");
       // Add lambda*P to AtWA
       for (int i=0; i<args.n_control_points; i++) {
         for (int j=0; j<args.n_control_points; j++) {
@@ -648,14 +551,11 @@ time(&TIME);
         }
       }
 
-      //int signum;
-      //gsl_linalg_LU_decomp(AtWA, perm, &signum);
       gsl_linalg_cholesky_decomp(AtWA);
 
       
       for (int b=0; b<n_bands; b++){
         
-        //printf("Computing AtWy...\n");
         // Compute AtWy
         for (int i=0; i<args.n_control_points; i++) {
           double sum2 = 0.0;
@@ -665,32 +565,11 @@ time(&TIME);
           AtWy->data[i] = sum2;
         }
 
-
-
-        //printf("AtWA + lambda*P:\n");
         // Solve (AtWA + lambda*P) c = AtWy
         //gsl_linalg_LU_solve(AtWA, perm, AtWy, c);
         gsl_linalg_cholesky_solve(AtWA, AtWy, c);
 
         for (int i=0; i<args.n_control_points; i++) coefficients.data[i*n_bands + b][p] = (short)c->data[i];
-
-        if (p==80564 && b == 8){
-          // Print coefficients and fitted values
-          printf("\nSmoothing spline coefficients (lambda=%g):\n", args.lambda);
-          for (int i=0; i<args.n_control_points; i++) {
-            printf("c [%02d] = %g\n", i, c->data[i]);
-          }
-          printf("\nFitted values:\n");
-          for (int i=0; i<n_x; i++) {
-            gsl_bspline_eval(x[i], tmpB, work);
-            double est = 0.0;
-            for (int j=0; j<args.n_control_points; j++) {
-              est += c->data[j] * tmpB->data[j];
-            }
-            printf("%g %g %g %g\n", x[i], w[i], y[i][b], est);
-          }
-        }
-
 
       } // end band-loop
       
