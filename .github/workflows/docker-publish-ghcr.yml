@@ -1,10 +1,9 @@
 name: Docker
 
 on:
-  push:
-    branches: [main,develop]
-  release:
-    types: [published]
+  workflow_run:
+    workflows: [Git-Tag]
+    types: [completed]
 
 permissions:
   packages: write
@@ -12,7 +11,6 @@ permissions:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/splinecoefs
-  VERSION: latest
 
 jobs:
   push:
@@ -29,5 +27,14 @@ jobs:
         run: docker build . --file Dockerfile --tag $IMAGE_NAME_LC
       - name: Push image
         run: |
-          docker tag $IMAGE_NAME_LC $IMAGE_NAME_LC:$VERSION
-          docker push $IMAGE_NAME_LC:$VERSION
+          # Fetch all tags
+          git fetch --tags
+          # Get the latest tag reachable from HEAD
+          VERSION=$(git describe --tags --abbrev=0)
+          echo VERSION=$VERSION
+          echo DOCKER=$DOCKER_USER/$IMAGE_NAME:$VERSION
+          docker tag $IMAGE_NAME $DOCKER_USER/$IMAGE_NAME:$VERSION
+          docker push $DOCKER_USER/$IMAGE_NAME:$VERSION
+          # Also tag and push as latest
+          docker tag $IMAGE_NAME $DOCKER_USER/$IMAGE_NAME:latest
+          docker push $DOCKER_USER/$IMAGE_NAME:latest
