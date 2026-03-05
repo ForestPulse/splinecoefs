@@ -33,8 +33,8 @@ jobs:
           VERSION=$(git describe --tags --abbrev=0)
           echo VERSION=$VERSION
           echo DOCKER=$DOCKER_USER/$IMAGE_NAME:$VERSION
-          docker tag $IMAGE_NAME $DOCKER_USER/$IMAGE_NAME:$VERSION
-          docker push $DOCKER_USER/$IMAGE_NAME:$VERSION
+          docker tag $IMAGE_NAME_LC $IMAGE_NAME_LC:$VERSION
+          docker push $IMAGE_NAME_LC:$VERSION
           # Also tag and push as latest
-          docker tag $IMAGE_NAME $DOCKER_USER/$IMAGE_NAME:latest
-          docker push $DOCKER_USER/$IMAGE_NAME:latest
+          docker tag $IMAGE_NAME_LC $IMAGE_NAME_LC:latest
+          docker push $IMAGE_NAME_LC:latest
