@@ -1,0 +1,6 @@
+*.R
+*.r
+*.csv
+*.tif
+*.o
+splinecoefs
