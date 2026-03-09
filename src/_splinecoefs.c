@@ -118,7 +118,7 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
         double ndvi = (input[d][BOA].data[band_nir][p] - input[d][BOA].data[band_red][p]) / denom;
         y[year]->data[n[year]] = ndvi;
         if (ndvi < 0){
-          w[year]->data[n[year]] = FLT_MIN;
+          w[year]->data[n[year]] = 0.01;
         } else {
           w[year]->data[n[year]] = sqrt(ndvi);
         }
@@ -490,14 +490,14 @@ time(&TIME);
         double denom = input[i][BOA].data[args.band_nir][p] + input[i][BOA].data[args.band_red][p];
         if (denom == 0) denom = 1;
         double ndvi = (input[i][BOA].data[args.band_nir][p] - input[i][BOA].data[args.band_red][p]) / denom;
-        if (ndvi < 0) ndvi = FLT_MIN;
+        if (ndvi < 0) ndvi = 0.01;
         w[n_x] = sqrt(ndvi) * weights.data[args.target_year - dates[i][BOA].year][p]/10000.0;
-        n_x++;
-
         if (dates[i][BOA].year == args.target_year){
-           if (target_year_start < 0) target_year_start = i;
-           target_year_end = i;
+          if (target_year_start < 0) target_year_start = n_x;
+          target_year_end = n_x;
         }
+
+        n_x++;
 
       }
 
@@ -511,17 +511,17 @@ time(&TIME);
         // Pad before first date
         x[n_x] = -1 - i;
         for (int b=0; b<n_bands; b++){
-          y[n_x][b] = input[target_year_start][BOA].data[b][p];
+          y[n_x][b] = y[target_year_start][b];
         }
-        w[n_x] = w_pad; // same weight as first point
+        w[n_x] = w[target_year_start]*w_pad; // same weight as first point
         n_x++;
 
         // Pad after last date
         x[n_x] = 366 + i;
         for (int b=0; b<n_bands; b++){
-          y[n_x][b] = input[target_year_end][BOA].data[b][p];
+          y[n_x][b] = y[target_year_end][b];
         }
-        w[n_x] = w_pad; // same weight as last point
+        w[n_x] = w[target_year_end]*w_pad; // same weight as last point
         n_x++;
 
       }
