@@ -97,6 +97,7 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
 
       // reset variables and counter for each year
       for (int year=0; year<n_years; year++){
+        weight->data[year][p] = 1;
         for (int d=0; d<vector_size; d++){
           x[year]->data[d] = 0; // reset size of vector to 0 for each year, will be incremented as data points are added
           y[year]->data[d] = 0; // reset size of vector to 0 for each year, will be incremented as data points are added
@@ -226,10 +227,7 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
 
         double w = max_weight * (1.0 - dist / dist_max);
 
-        if (w < 0){
-          weight->data[year][p] = 0;
-          //printf("Negative weight for year %d for pixel %d, setting to 0, d_max = %f, dist = %f.\n", target_year - year, p, dist_max, dist);
-        } else {
+        if (w > 0){
           weight->data[year][p] = w * 10000; // scale weight to 0-10000 for storage as short
         }
 
@@ -499,7 +497,10 @@ time(&TIME);
 
       }
 
-      if (target_year_start < 0 || target_year_end < 0) continue; // no data for target year
+      if (target_year_start < 0 || target_year_end < 0){
+        for (int c=0; c<args.n_control_points*n_bands; c++) coefficients.data[c][p] = coefficients.nodata; // set coefficients to nodata for this pixel
+        continue; // no data for target year
+      } 
 
       for (int i=0; i<n_pad; i++){
 
@@ -521,7 +522,10 @@ time(&TIME);
 
       }
 
-      if (n_x < args.n_control_points) continue; // need at least n_control_points data points for fitting
+      if (n_x < args.n_control_points){
+        for (int c=0; c<args.n_control_points*n_bands; c++) coefficients.data[c][p] = coefficients.nodata; // set coefficients to nodata for this pixel
+        continue; // need at least n_control_points data points for fitting
+      }
 
       // Build B-spline basis matrix A
       for (int i=0; i<n_x; i++) {
