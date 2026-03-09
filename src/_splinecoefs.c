@@ -117,7 +117,11 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
         if (denom == 0) denom = 1;
         double ndvi = (input[d][BOA].data[band_nir][p] - input[d][BOA].data[band_red][p]) / denom;
         y[year]->data[n[year]] = ndvi;
-        w[year]->data[n[year]] = sqrt(ndvi);
+        if (ndvi < 0){
+          w[year]->data[n[year]] = FLT_MIN;
+        } else {
+          w[year]->data[n[year]] = sqrt(ndvi);
+        }
 
         n[year]++;
 
@@ -486,7 +490,7 @@ time(&TIME);
         double denom = input[i][BOA].data[args.band_nir][p] + input[i][BOA].data[args.band_red][p];
         if (denom == 0) denom = 1;
         double ndvi = (input[i][BOA].data[args.band_nir][p] - input[i][BOA].data[args.band_red][p]) / denom;
-
+        if (ndvi < 0) ndvi = FLT_MIN;
         w[n_x] = sqrt(ndvi) * weights.data[args.target_year - dates[i][BOA].year][p]/10000.0;
         n_x++;
 
