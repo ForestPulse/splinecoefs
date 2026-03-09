@@ -126,8 +126,8 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
             
       for (int year=0; year<n_years; year++){
       
-        if (n[year] < n_control){
-          fprintf(stderr, "Not enough data points for pixel %din year %d: %d points, but %d control points required.\n", p, year, n[year], n_control);
+        if (n[year] < 1){
+          fprintf(stderr, "At least one datapoiunt is required (pixel %d, year %d): %d points.\n", p, year, n[year]);
           if (year == 0) break; else continue; // need at least as many data points as control points for fitting
         } 
 
