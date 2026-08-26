@@ -12,8 +12,9 @@ Image I/O header
 #include <stdbool.h>  // boolean data type
 
 #include "alloc.h"
-#include "const.h"
+#include "dtype.h"
 #include "string.h"
+#include "utils.h"
 
 /** Geospatial Data Abstraction Library (GDAL) **/
 #include "gdal.h"       // public (C callable) GDAL entry points
@@ -41,7 +42,7 @@ typedef struct {
   short nodata;
 } image_t;
 
-void read_image(char *path, bandlist_t *bands, image_t *image);
+void read_image(char *path, bandlist_t *bands, image_t *image, double pixel_size);
 void copy_image(image_t *from, image_t *to, int nbands, short nodata, char *path);
 void write_image(image_t *image);
 void free_image(image_t *image);

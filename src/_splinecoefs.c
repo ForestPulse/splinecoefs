@@ -280,7 +280,7 @@ time(&TIME);
 
 
   image_t mask;
-  read_image(args.path_mask, NULL, &mask);
+  read_image(args.path_mask, NULL, &mask, args.pixel_size);
 
   table_t input_table = read_str_table(args.path_input, false, false);
 
@@ -342,7 +342,7 @@ time(&TIME);
   }
   
 
-  #pragma omp parallel shared(input_table, dates, n_dates, input, mask, stderr) default(none)
+  #pragma omp parallel shared(input_table, dates, n_dates, input, mask, args, stderr) default(none)
   {
 
     #pragma omp for
@@ -350,7 +350,7 @@ time(&TIME);
 
       for (int j=0; j<N_PROD; j++){
 
-        read_image(input_table.str_data[i][j], NULL, &input[i][j]);
+        read_image(input_table.str_data[i][j], NULL, &input[i][j], args.pixel_size);
         compare_images(&mask, &input[i][j]);
 
         if (i > 0 && j == BOA){
@@ -385,7 +385,7 @@ time(&TIME);
   proctime_print("Reading time", TIME);
   
   image_t weights;
-  copy_image(&mask, &weights, n_years, SHRT_MIN, "/home/ahsoka/frantz/temp/weights.tif");
+  copy_image(&mask, &weights, n_years, SHRT_MIN, "NULL");
   
   if (determine_annual_weights(4, 6, args.max_weight, args.target_year, 
         dates, n_dates, n_years, input, args.band_nir, args.band_red, &mask, &weights) != SUCCESS){

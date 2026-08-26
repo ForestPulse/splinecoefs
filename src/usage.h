@@ -19,6 +19,7 @@ typedef struct {
   char path_input[STRLEN];
   char path_mask[STRLEN];
   char path_output[STRLEN];
+  double pixel_size;
   int order;
   int n_control_points;
   double lambda;

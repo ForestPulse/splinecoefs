@@ -6,7 +6,7 @@ This file contains functions for I/O-ing images
 #include "image_io.h"
 
 
-void read_image(char *path, bandlist_t *bands, image_t *image){
+void read_image(char *path, bandlist_t *bands, image_t *image, double pixel_size){
 
 
   GDALDatasetH  fp_dataset;
@@ -16,11 +16,37 @@ void read_image(char *path, bandlist_t *bands, image_t *image){
     fprintf(stderr, "could not open %s\n", path); exit(FAILURE);}
 
   copy_string(image->proj, STRLEN, GDALGetProjectionRef(fp_dataset));
-  GDALGetGeoTransform(fp_dataset, image->geotran);
+  
+  double disc_geotran[6];
+  GDALGetGeoTransform(fp_dataset, disc_geotran);
+  double disc_nx = GDALGetRasterXSize(fp_dataset);
+  double disc_ny = GDALGetRasterYSize(fp_dataset);
 
-  image->nx = GDALGetRasterXSize(fp_dataset);
-  image->ny = GDALGetRasterYSize(fp_dataset);
-  image->nc = image->nx*image->ny;
+  if (!fequal(disc_geotran[1], fabs(disc_geotran[5]))){
+    fprintf(stderr, "Pixel size is not square for %s: %f vs %f\n", path, disc_geotran[1], fabs(disc_geotran[5]));
+    exit(FAILURE);
+  }
+
+  double width  = disc_nx * disc_geotran[1];
+  double height = disc_ny * fabs(disc_geotran[5]);
+
+  double tol = 5e-3;
+  if (fmod(width, pixel_size) > tol || fmod(height, pixel_size) > tol){
+    fprintf(stderr, "image width %f and height %f must be a multiple of requested pixel size %f.\n", 
+      width, height, pixel_size);
+    exit(FAILURE);
+  }
+
+  image->geotran[0] = disc_geotran[0];
+  image->geotran[1] = pixel_size;
+  image->geotran[2] = 0;
+  image->geotran[3] = disc_geotran[3];
+  image->geotran[4] = 0;
+  image->geotran[5] = -1 * pixel_size;
+
+  image->nx = (int)(width / pixel_size);
+  image->ny = (int)(height / pixel_size);
+  image->nc = image->nx * image->ny;
 
   image->nb = GDALGetRasterCount(fp_dataset);
 
@@ -53,7 +79,7 @@ void read_image(char *path, bandlist_t *bands, image_t *image){
     }
 
     if (GDALRasterIO(band, GF_Read, 0, 0, 
-      image->nx, image->ny, image->data[b], 
+      disc_nx, disc_ny, image->data[b], 
       image->nx, image->ny, GDT_Int16, 0, 0) == CE_Failure){
       printf("could not read band %d from %s.\n", b+1, path); exit(FAILURE);}
   }
