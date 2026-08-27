@@ -2,7 +2,7 @@
 
 
 void usage(char *exe, int exit_code){
-  printf("Usage: %s -j cpus -i input-table -x mask-image -o output-image\n", exe);
+  printf("Usage: %s -j cpus -i input-table -x mask-image -o output-image -s pixel-size\n", exe);
   printf("          -k order -c control-points -l lambda -y target-year\n");
   printf("          -r = RED-band -n = NIR-band\n");
   printf("\n");
@@ -11,6 +11,7 @@ void usage(char *exe, int exit_code){
   printf("  -i = input-table = csv file with input images\n");
   printf("  -x = mask image\n");
   printf("  -o = output file (.tif)\n");
+  printf("  -s = pixel size\n");
   printf("\n");  
   printf("  -k = order of the spline\n");
   printf("  -c = number of control points (equiv. to number of output coefficients)\n");
@@ -25,10 +26,10 @@ void usage(char *exe, int exit_code){
 }
 
 void parse_args(int argc, char *argv[], args_t *args){
-  int opt, received_n = 0, expected_n = 11;
+  int opt, received_n = 0, expected_n = 12;
   opterr = 0;
 
-  while ((opt = getopt(argc, argv, "j:i:x:o:k:c:l:y:w:r:n:")) != -1){
+  while ((opt = getopt(argc, argv, "j:i:x:o:s:k:c:l:y:w:r:n:")) != -1){
     switch(opt){
       case 'j':
         args->n_cpus = atoi(optarg);
@@ -45,6 +46,10 @@ void parse_args(int argc, char *argv[], args_t *args){
       case 'o':
         copy_string(args->path_output, STRLEN, optarg);
         received_n++;
+        break;
+      case 's':
+        received_n++;
+        args->pixel_size = atof(optarg);
         break;
       case 'k':
         args->order = atoi(optarg);
@@ -104,6 +109,11 @@ void parse_args(int argc, char *argv[], args_t *args){
 
   if (fileexist(args->path_output)){
     fprintf(stderr, "Output file %s already exists.\n", args->path_output);
+    usage(argv[0], FAILURE);
+  }
+
+  if (args->pixel_size <= 0){
+    fprintf(stderr, "Pixel size must be positive.\n");
     usage(argv[0], FAILURE);
   }
 

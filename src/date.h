@@ -11,7 +11,7 @@ Date header
 #include <math.h>    // common mathematical functions
 #include <string.h>  // string handling functions
 
-#include "const.h"
+#include "dtype.h"
 #include "string.h"
 
 

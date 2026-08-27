@@ -5,9 +5,27 @@
 extern "C" {
 #endif
 
-enum { STRLEN = 1024, LONGSTRLEN = 65536, TRANSFORMLEN = 6 };
+// abbreviated datatypes
+typedef unsigned short int ushort;
 
-enum { SUCCESS = 0, FAILURE = 1 };
+// pi
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+// radians to degree conversion
+#define _R2D_CONV_  57.29577951308232286465
+#define _D2R_CONV_   0.01745329251994329547
+
+// string length
+#define STRLEN 1024
+
+// function return codes
+#define SUCCESS 0
+#define FAILURE 1
+#define CANCEL 9
+
+enum { LONGSTRLEN = 65536, TRANSFORMLEN = 6 };
 
 #ifdef __cplusplus
 }

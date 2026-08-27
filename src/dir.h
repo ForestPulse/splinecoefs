@@ -16,7 +16,7 @@ Directory/file support header
 #include <unistd.h>   // essential POSIX functions and constants
 #include <errno.h>    // error numbers
 
-#include "const.h"
+#include "dtype.h"
 #include "string.h"
 
 
