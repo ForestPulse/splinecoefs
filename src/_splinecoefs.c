@@ -229,7 +229,16 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
         }
         dist = sqrt(dist/n_doys);
 
-        double w = max_weight * (1.0 - dist / dist_max);
+        //double w = max_weight * (1.0 - dist / dist_max);
+        //double w = 0.5;
+        //double w = 1.0/((year+1.0)*(year+1.0));
+        double w = 0.0;
+        if (year == 1){
+          w = 0.25;
+        }
+        if (year == 2){
+          w = 0.0;
+        }
 
         if (w > 0){
           weight->data[year][p] = w * 10000; // scale weight to 0-10000 for storage as short
@@ -259,8 +268,194 @@ int determine_annual_weights(int order, int n_control, double max_weight, int ta
   return SUCCESS;
 }
 
+//####################################
+// Hilffunktion zum setzten der Basisgewichte pro Jahr
+static void set_base_weights(
+    int p,
+    int target_year,
+    date_t **dates,
+    int n_dates,
+    image_t **input,
+    image_t *weight)
+{
+    for(int d=0; d<n_dates; d++){
+
+        if(!use_this_pixel(input[d][QAI].data[0][p]))
+            continue;
+
+        int year_diff = target_year - dates[d][BOA].year;
+
+        double base_w = 0.0;
+
+        if(year_diff==0) base_w = 1.0;
+        else if(year_diff==1) base_w = 0.3;
+        else if(year_diff==2) base_w = 0.15;
+        else continue;
+
+        weight->data[d][p] = base_w * 10000;
+    }
+}
+
+int determine_point_weights(
+    int order,
+    int n_control,
+    int target_year,
+    date_t **dates,
+    int n_dates,
+    image_t **input,
+    int band_nir,
+    int band_red,
+    image_t *mask,
+    image_t *weight){
+
+  #pragma omp parallel shared(order,n_control,target_year,dates,n_dates,input,band_nir,band_red,mask,weight) default(none)
+  {
+    int n_pad = 3;
+    //Defines the range of the spline
+    double min_x = -n_pad;
+    double max_x = 365 + n_pad;
+
+    
+    gsl_vector *c = gsl_vector_calloc(n_control);
+    gsl_vector *tmpB = gsl_vector_calloc(n_control);
+
+    // defines Workspace and initializes the B-spline basis functions
+    gsl_bspline_workspace *work;
+    work = gsl_bspline_alloc_ncontrol(order,n_control);
+    gsl_bspline_init_uniform(min_x,max_x,work);
 
 
+    int n_x_max = n_dates + 2*n_pad;
+
+    double *x=NULL;
+    double *y=NULL;
+    double *w=NULL;
+
+    alloc((void**)&x,n_x_max,sizeof(double));
+    alloc((void**)&y,n_x_max,sizeof(double));
+    alloc((void**)&w,n_x_max,sizeof(double));
+
+    int *obs_index=NULL;
+    alloc((void**)&obs_index,n_x_max,sizeof(int));
+
+    #pragma omp for
+    for(int p=0;p<mask->nc;p++){
+        if(mask->data[0][p]==mask->nodata || mask->data[0][p]==0) continue;
+
+        for(int d=0; d<n_dates; d++)      // initialize weights
+          weight->data[d][p] = 0;
+
+        int n_x=0;
+        for(int d=0; d<n_dates; d++){
+
+            if(!use_this_pixel(input[d][QAI].data[0][p])) continue;
+
+            int year_diff = target_year - dates[d][BOA].year;
+            double base_w = 0.0;
+            if(year_diff==0) base_w = 1.0;
+            else if(year_diff==1) base_w = 0.3;
+            else if(year_diff==2) base_w = 0.15;
+            else continue;
+
+            x[n_x] = input[d][THT].data[0][p];
+
+            double denom = input[d][BOA].data[band_nir][p] +
+                          input[d][BOA].data[band_red][p];
+
+            if(denom==0) denom=1;
+
+            double ndvi = (input[d][BOA].data[band_nir][p] -
+                          input[d][BOA].data[band_red][p]) / denom;
+
+            y[n_x] = ndvi;
+            w[n_x] = base_w;
+
+            obs_index[n_x] = d; 
+
+            n_x++;
+        }
+
+        if(n_x < n_control){
+          set_base_weights(p,target_year,dates,n_dates,input,weight);
+          continue;
+        }
+        /* check number of unique x values */
+        int n_unique = 1;
+        for(int i=0;i<n_x;i++){
+          int unique = 1;
+          for(int j=0;j<i;j++){
+              if(fabs(x[i]-x[j]) < 1e-6){
+                  unique = 0;
+                  break;
+              }
+          }
+          if(unique) n_unique++;
+      }
+
+        if(n_unique < order){
+            set_base_weights(p,target_year,dates,n_dates,input,weight);
+            continue;
+        }
+        // first b-spline fit with fixed year's weights
+        double chisq;
+        gsl_vector_view xv = gsl_vector_view_array(x,n_x);
+        gsl_vector_view yv = gsl_vector_view_array(y,n_x);
+        gsl_vector_view wv = gsl_vector_view_array(w,n_x);
+        
+        // if any error happens, use the year weights
+        gsl_set_error_handler_off();
+        int status = gsl_bspline_wlssolve(&xv.vector,&yv.vector,&wv.vector,c,&chisq,work);
+
+        if(status != GSL_SUCCESS){
+          set_base_weights(p,target_year,dates,n_dates,input,weight);
+          continue;
+        }
+        //gsl_bspline_wlssolve(&xv.vector,&yv.vector,&wv.vector,c,&chisq,work);
+
+        // calculate residuals and adjust weights with penalty
+        for(int i=0;i<n_x;i++){
+
+            double est;
+            gsl_bspline_calc(x[i],c,&est,work);
+            double res = fabs(y[i]-est);
+
+            if(fabs(est)<1e-6) est = 1e-6;
+            double rel = res/fabs(est);
+            double penalty;
+
+            // bestimmung des panalties, z.B. linear zwischen 0.1 und 0.5, darüber 0.5, darunter 1.0
+            double max_rel = 0.4;
+            if(rel<=0.1) penalty = 1.0;
+            else if(rel>=max_rel) penalty = 0.1; 
+            //Wenn die abweichung größer als 40% ist, wird das Gewicht auf 10% reduziert
+            else{
+                double t = (rel-0.1)/(max_rel-0.1);
+                penalty = 1.0 - 0.9*t;
+            }
+
+            w[i] *= penalty;
+
+            int d = obs_index[i];
+            if(d >= 0 && d < weight->nb){   
+              weight->data[d][p] = w[i] * 10000;
+            }
+
+        }
+    }
+
+    gsl_vector_free(c);
+    gsl_vector_free(tmpB);
+    gsl_bspline_free(work);
+
+    free(x);
+    free(y);
+    free(w);
+    free(obs_index);              // NEW
+
+  }
+  return SUCCESS;
+}
+//####################################
 
 int main( int argc, char *argv[] ){
 time_t TIME;
@@ -379,19 +574,30 @@ time(&TIME);
     return FAILURE;
   }
 
-
-
-
   proctime_print("Reading time", TIME);
   
   image_t weights;
-  copy_image(&mask, &weights, n_years, SHRT_MIN, "NULL");
+  //copy_image(&mask, &weights, n_years, SHRT_MIN, "/home/ahsoka/frantz/temp/weights.tif");
+  //###############################
+  // "alte" geupdatete weights version
+  copy_image(&mask, &weights, n_dates, SHRT_MIN, "/home/ahsoka/frantz/temp/weights.tif");
+  //###############################
+  // nach git merge eingefügte masken version
+  //copy_image(&mask, &weights, n_years, SHRT_MIN, "NULL");
   
-  if (determine_annual_weights(4, 6, args.max_weight, args.target_year, 
-        dates, n_dates, n_years, input, args.band_nir, args.band_red, &mask, &weights) != SUCCESS){
-    fprintf(stderr, "Error determining annual weights.\n");
+
+  //if (determine_annual_weights(4, 6, args.max_weight, args.target_year, 
+  //      dates, n_dates, n_years, input, args.band_nir, args.band_red, &mask, &weights) != SUCCESS){
+  //  fprintf(stderr, "Error determining annual weights.\n");
+  //  return FAILURE;
+  //}
+  //###############################
+  if (determine_point_weights(args.order,args.n_control_points,args.target_year,
+        dates,n_dates,input,args.band_nir,args.band_red,&mask,&weights) != SUCCESS){
+    fprintf(stderr,"Error determining weights\n");
     return FAILURE;
   }
+  //###############################
   
   //write_image(&weights);
 
@@ -411,6 +617,7 @@ time(&TIME);
     double max_x = 365 + n_pad;
 
     gsl_vector *c = gsl_vector_calloc(args.n_control_points);
+
     gsl_bspline_workspace *work;
     work = gsl_bspline_alloc_ncontrol(args.order, args.n_control_points);
     gsl_bspline_init_uniform(min_x, max_x, work);
@@ -420,9 +627,11 @@ time(&TIME);
     gsl_vector *tmpB = gsl_vector_calloc(args.n_control_points); // temp for basis
     
     int n_x_max = n_dates + n_pad*2;
+
     double *x = NULL;
     double **y = NULL;
     double *w = NULL;
+
     alloc((void**)&x, n_x_max, sizeof(double));
     alloc_2D((void***)&y, n_x_max, n_bands, sizeof(double));
     alloc((void**)&w, n_x_max, sizeof(double));
@@ -491,7 +700,10 @@ time(&TIME);
         if (denom == 0) denom = 1;
         double ndvi = (input[i][BOA].data[args.band_nir][p] - input[i][BOA].data[args.band_red][p]) / denom;
         if (ndvi < 0) ndvi = 0.01;
-        w[n_x] = sqrt(ndvi) * weights.data[args.target_year - dates[i][BOA].year][p]/10000.0;
+        //######################
+        //w[n_x] = sqrt(ndvi) * weights.data[args.target_year - dates[i][BOA].year][p]/10000.0;
+        w[n_x] = sqrt(ndvi) * weights.data[i][p] / 10000.0;
+        //######################
         if (dates[i][BOA].year == args.target_year){
           if (target_year_start < 0) target_year_start = n_x;
           target_year_end = n_x;
@@ -506,7 +718,8 @@ time(&TIME);
         continue; // no data for target year
       } 
 
-      for (int i=0; i<n_pad; i++){
+      // old Padding: just take the first and last point and add n_pad points before and after with same value and weight
+      /*for (int i=0; i<n_pad; i++){
 
         // Pad before first date
         x[n_x] = -1 - i;
@@ -524,7 +737,57 @@ time(&TIME);
         w[n_x] = w[target_year_end]*w_pad; // same weight as last point
         n_x++;
 
+      }*/
+      // new padding: take the median of the first/last 3 points for value and weight, to be more robust against outliers at the edges, and add n_pad points before and after with same value and weight
+      for (int i=0; i<n_pad; i++){
+        // --- Pad before first date: Median der ersten 3 Observations ---
+        x[n_x] = -1 - i;
+        for (int b=0; b<n_bands; b++){
+            double vals[3];
+            int count = 0;
+            for (int j=0; j<3 && (target_year_start+j)<n_x; j++){
+                vals[count++] = y[target_year_start + j][b];
+            }
+            // sortiere und nimm Median
+            if(count==3){
+                if(vals[0]>vals[1]) { double t=vals[0]; vals[0]=vals[1]; vals[1]=t; }
+                if(vals[1]>vals[2]) { double t=vals[1]; vals[1]=vals[2]; vals[2]=t; }
+                if(vals[0]>vals[1]) { double t=vals[0]; vals[0]=vals[1]; vals[1]=t; }
+                y[n_x][b] = vals[1]; // Median
+            } else if(count>0){
+                y[n_x][b] = vals[count/2];
+            } else {
+                y[n_x][b] = y[target_year_start][b];
+            }
+        }
+        w[n_x] = w[target_year_start]*w_pad;
+        n_x++;
+
+        // --- Pad after last date: Median der letzten 3 Observations ---
+        x[n_x] = 366 + i;
+        for (int b=0; b<n_bands; b++){
+            double vals[3];
+            int count = 0;
+            for (int j=0; j<3 && (target_year_end-j)>=0; j++){
+                vals[count++] = y[target_year_end - j][b];
+            }
+            // sortiere und nimm Median
+            if(count==3){
+                if(vals[0]>vals[1]) { double t=vals[0]; vals[0]=vals[1]; vals[1]=t; }
+                if(vals[1]>vals[2]) { double t=vals[1]; vals[1]=vals[2]; vals[2]=t; }
+                if(vals[0]>vals[1]) { double t=vals[0]; vals[0]=vals[1]; vals[1]=t; }
+                y[n_x][b] = vals[1]; // Median
+            } else if(count>0){
+                y[n_x][b] = vals[count/2];
+            } else {
+                y[n_x][b] = y[target_year_end][b];
+            }
+        }
+        w[n_x] = w[target_year_end]*w_pad;
+        n_x++;
       }
+      //new padding end
+
 
       if (n_x < args.n_control_points){
         for (int c=0; c<args.n_control_points*n_bands; c++) coefficients.data[c][p] = coefficients.nodata; // set coefficients to nodata for this pixel
@@ -582,8 +845,10 @@ time(&TIME);
       } // end band-loop
       
     } // end pixel-loop
-    
-    free_2D((void**)A, n_dates);
+    //##########################
+    //free_2D((void**)A, n_dates);
+    free_2D((void**)A, n_x_max);
+    //#########################
     gsl_vector_free(c);
     gsl_bspline_free(work);
     gsl_matrix_free(AtWA);
@@ -594,7 +859,7 @@ time(&TIME);
   } // end parallel region
 
 
-
+  proctime_print("Splines calculated", TIME);
 
   write_image(&coefficients);
 
