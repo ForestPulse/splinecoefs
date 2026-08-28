@@ -580,10 +580,10 @@ time(&TIME);
   //copy_image(&mask, &weights, n_years, SHRT_MIN, "/home/ahsoka/frantz/temp/weights.tif");
   //###############################
   // "alte" geupdatete weights version
-  //copy_image(&mask, &weights, n_dates, SHRT_MIN, "/home/ahsoka/frantz/temp/weights.tif");
+  copy_image(&mask, &weights, n_dates, SHRT_MIN, "/home/ahsoka/frantz/temp/weights.tif");
   //###############################
   // nach git merge eingefügte masken version
-  copy_image(&mask, &weights, n_years, SHRT_MIN, "NULL");
+  //copy_image(&mask, &weights, n_years, SHRT_MIN, "NULL");
   
 
   //if (determine_annual_weights(4, 6, args.max_weight, args.target_year, 
